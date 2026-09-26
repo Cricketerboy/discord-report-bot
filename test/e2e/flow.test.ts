@@ -60,6 +60,20 @@ describe('discord report bot (e2e)', { timeout: 180_000 }, () => {
     assert.equal((await fetch(`${app.url}/api/g/${GUILD.id}/activity`)).status, 401);
   });
 
+  it('accepts same-origin browser form posts and blocks cross-origin ones', async () => {
+    const page = await fetch(`${app.url}/login`);
+    assert.equal(page.headers.get('referrer-policy'), 'same-origin', 'no-referrer would make browsers send Origin: null');
+    const post = (origin: string) =>
+      fetch(`${app.url}/login`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', origin },
+        body: new URLSearchParams({ email: ADMIN.email, password: ADMIN.password, next: '/dashboard' }).toString(),
+      });
+    assert.equal((await post(app.url)).status, 302);
+    assert.equal((await post('https://evil.example')).status, 403);
+  });
+
   it('rejects a wrong password and accepts the seeded admin', async () => {
     const bad = await browser.form('/login', { email: ADMIN.email, password: 'nope', next: '/dashboard' });
     assert.equal(bad.status, 401);

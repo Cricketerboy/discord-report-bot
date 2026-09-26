@@ -16,7 +16,8 @@ import { errorPage } from './web/views.js';
 
 const publicDir = fileURLToPath(new URL('../public', import.meta.url));
 
-export function createApp(): express.Express {
+/** `isBooted` reports whether migrations + admin seeding have finished (readiness must wait for them). */
+export function createApp(opts: { isBooted: () => boolean } = { isBooted: () => true }): express.Express {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1); // behind Render's proxy; needed for req.ip and secure cookies
@@ -33,6 +34,9 @@ export function createApp(): express.Express {
         },
       },
       crossOriginEmbedderPolicy: false,
+      // helmet's default "no-referrer" makes browsers send `Origin: null` on same-origin form POSTs,
+      // which the Origin check below would reject. "same-origin" keeps referrers private to other sites.
+      referrerPolicy: { policy: 'same-origin' },
     }),
   );
 
@@ -41,6 +45,10 @@ export function createApp(): express.Express {
     res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
   });
   app.get('/health/ready', async (_req, res) => {
+    if (!opts.isBooted()) {
+      res.status(503).json({ status: 'starting' });
+      return;
+    }
     try {
       await withTimeout(pool.query('SELECT 1'), 5000, 'db ping');
       res.json({ status: 'ready' });

@@ -34,7 +34,8 @@ async function bootDatabase(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const app = createApp();
+  let booted = false;
+  const app = createApp({ isBooted: () => booted });
   // Start listening first: signature checks and PING work (and interactions get spooled) even if the DB is slow to boot.
   const server = app.listen(config.PORT, () => logger.info({ port: config.PORT, baseUrl: config.baseUrl }, 'http server listening'));
   server.keepAliveTimeout = 65_000;
@@ -46,6 +47,7 @@ async function main(): Promise<void> {
   await bootDatabase();
   const worker = new Worker();
   worker.start();
+  booted = true;
 
   // Free Render instances sleep after 15 idle minutes, and Discord does not retry an interaction that
   // times out against a sleeping host. A self-ping through the public URL keeps the instance warm.
