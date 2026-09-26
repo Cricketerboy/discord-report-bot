@@ -27,7 +27,7 @@ It uses Discord **HTTP interactions** (no gateway websocket). All work after the
 
 1. Join the test server. Open the dashboard in another tab, sign in, click the server, and stay on **Live log**.
 2. In `#general`, run `/report text: the checkout page is down for everyone`.
-   - You get an ephemeral "thinking…" that turns into a *Report #N received* reply with the AI summary, severity and category.
+   - You get an ephemeral "thinkingâ€¦" that turns into a *Report #N received* reply with the AI summary, severity and category.
    - A report card appears in the report channel. The "down" keyword rule escalates it to **critical**, which mentions the alert role.
    - A mirror notification arrives in the mirror channel.
    - In the dashboard, the row appears live, and each action (triage, reply, channel post, mirror) turns green as it completes.
@@ -38,7 +38,7 @@ It uses Discord **HTTP interactions** (no gateway websocket). All work after the
 **Unhappy paths**
 
 - **Forged / unsigned / replayed requests:** run `npm run probe -- <live-url>`, or send your own junk to `<live-url>/interactions`. Everything gets a `401`, and rejections are counted on the dashboard home under *Rejected requests*.
-- **Downstream outage:** go to Settings → *Fault injection* → "Fail the next N mirror deliveries" = 3, then file a report. The Live log shows the mirror action retrying `↻ mirror (1/10)`, `(2/10)` … and then succeeding. Failures that exhaust retries or are permanent (for example, a deleted webhook) show up under **Failures** with a *Retry now* button.
+- **Downstream outage:** go to Settings â†’ *Fault injection* â†’ "Fail the next N mirror deliveries" = 3, then file a report. The Live log shows the mirror action retrying `â†» mirror (1/10)`, `(2/10)` â€¦ and then succeeding. Failures that exhaust retries or are permanent (for example, a deleted webhook) show up under **Failures** with a *Retry now* button.
 - **AI down:** give a bad `GROQ_API_KEY`. Triage falls back to keyword rules, the reply still goes out, and an `ai.fallback` warning is logged.
 - **Duplicates and the database being down:** Discord can't be made to redeliver on demand, so these are covered by the e2e suite (`npm run test:e2e`). It replays signed interactions, including after a process restart, and takes the database away mid-request.
 
@@ -52,7 +52,7 @@ It uses Discord **HTTP interactions** (no gateway websocket). All work after the
 | Responds in Discord | Deferred reply edited with the result; report card posted to the configured channel |
 | Mirrors to a second channel | Slack Incoming Webhook **or** Discord channel webhook, per server ([src/services/mirror.ts](src/services/mirror.ts)) |
 | Dashboard behind login | Live log (SSE), reports, rules, settings, failures ([src/web](src/web)) |
-| **Stretch:** configurable rules | Rule engine: *keyword / severity ≥ / category / always* → *set severity / mention role / mirror / don't mirror / add note* ([src/services/rules.ts](src/services/rules.ts)) |
+| **Stretch:** configurable rules | Rule engine: *keyword / severity â‰¥ / category / always* â†’ *set severity / mention role / mirror / don't mirror / add note* ([src/services/rules.ts](src/services/rules.ts)) |
 | **Stretch:** buttons | Acknowledge / Resolve / Reopen, with a permission check, idempotent state changes, and in-place message updates |
 | **Stretch:** modal | `/report` with no text opens a form, handled as `MODAL_SUBMIT` |
 | **Stretch:** AI step | Groq (free tier, JSON mode, validated output) for summary, category, severity and tags. Falls back to keyword triage |
@@ -62,24 +62,24 @@ It uses Discord **HTTP interactions** (no gateway websocket). All work after the
 ## Architecture
 
 ```
-Discord ──POST /interactions──▶ verify Ed25519 + timestamp window ──✗──▶ 401 (counted, never processed)
-                                   │
-                                   ▼
+Discord â”€â”€POST /interactionsâ”€â”€â–¶ verify Ed25519 + timestamp window â”€â”€âœ—â”€â”€â–¶ 401 (counted, never processed)
+                                   â”‚
+                                   â–¼
                       in-memory dedup (interaction id)
-                                   │
-                  ┌────────────────┴─────────────────┐   budget: 2.3 s total
-                  ▼                                  ▼
+                                   â”‚
+                  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   budget: 2.3 s total
+                  â–¼                                  â–¼
    INSERT interaction + jobs in ONE tx      DB slow/down (>1.2 s)?
-   (PK on interaction id = dedup)           → write to local spool (disk), still answer Discord
-                  │                                  │  spool replays into DB when it's back
-                  ▼                                  ▼
+   (PK on interaction id = dedup)           â†’ write to local spool (disk), still answer Discord
+                  â”‚                                  â”‚  spool replays into DB when it's back
+                  â–¼                                  â–¼
         answer Discord: defer (5) / message (4) / update (7) / modal (9)
-                                   │
-                                   ▼
+                                   â”‚
+                                   â–¼
               Postgres job queue (FOR UPDATE SKIP LOCKED, dedupe_key UNIQUE)
-     report.process ─▶ AI triage ─▶ rules ─▶ fan-out:
-         discord.reply (edit @original) · discord.post_report (nonce-idempotent) · mirror.send
-     each job: retry with exponential backoff + jitter (honours 429 retry_after) → dead-letter + dashboard
+     report.process â”€â–¶ AI triage â”€â–¶ rules â”€â–¶ fan-out:
+         discord.reply (edit @original) Â· discord.post_report (nonce-idempotent) Â· mirror.send
+     each job: retry with exponential backoff + jitter (honours 429 retry_after) â†’ dead-letter + dashboard
 ```
 
 ### How each quality-bar item is handled
@@ -87,9 +87,9 @@ Discord ──POST /interactions──▶ verify Ed25519 + timestamp window ─�
 | Quality bar | Mechanism | Tested in |
 |---|---|---|
 | Forged / unsigned requests | Ed25519 check over `timestamp + raw body` using Node's built-in crypto, before any parsing. `401` on failure. The raw body is captured before any JSON parser runs. | `test/unit/verify.test.ts`, e2e |
-| Replayed requests | The signed timestamp must be within ±5 min. Inside that window, the interaction-id dedup catches replays. | unit + e2e |
+| Replayed requests | The signed timestamp must be within Â±5 min. Inside that window, the interaction-id dedup catches replays. | unit + e2e |
 | Same interaction delivered twice | (1) In-memory seen-set, which works even while the DB is down. (2) Primary key on `interactions.id`, written in the same transaction as the jobs it creates. (3) Every job has a unique `dedupe_key`. (4) Channel posts use Discord's `nonce` + `enforce_nonce`. (5) Button state changes are conditional updates (`WHERE status <> target`), so a repeated click changes nothing and notifies no one. | e2e: duplicate, and duplicate **after restart** |
-| Downstream briefly unavailable | Each downstream call is its own job, retried with backoff (2 s → 5 min cap, jitter, `Retry-After` respected). A mirror outage doesn't block the Discord reply. Permanent 4xx errors dead-letter immediately and are visible and retryable in the dashboard. | e2e: mirror 503 ×2 → success on attempt 3 |
+| Downstream briefly unavailable | Each downstream call is its own job, retried with backoff (2 s â†’ 5 min cap, jitter, `Retry-After` respected). A mirror outage doesn't block the Discord reply. Permanent 4xx errors dead-letter immediately and are visible and retryable in the dashboard. | e2e: mirror 503 Ã—2 â†’ success on attempt 3 |
 | AI unavailable | Two quick attempts, then deterministic keyword triage. The reporter is never left waiting on the LLM. | e2e |
 | Own service / DB briefly unavailable | If the DB can't answer in time, the interaction and the jobs it owes go to an on-disk spool and Discord still gets its answer on time. The spool drains into Postgres when the DB returns. Jobs stuck in `running` after a crash are recovered. The HTTP server starts before the DB is ready, so PING and verification keep working. | e2e: DB taken down mid-request |
 | 3-second window | A shared `Deadline` (2.3 s) caps the config lookup, ingest and inline work. Anything slow is deferred (`type 5` / `type 6`) and finished by a job that edits `@original`. Tokens expire after 15 min, so jobs stop retrying a follow-up after that. | e2e asserts < 2.5 s |
@@ -142,7 +142,7 @@ Then:
 
 1. Set `PUBLIC_BASE_URL` to that URL and restart.
 2. Set the portal's *Interactions Endpoint URL* to `<url>/interactions`.
-3. Add `<url>/connect/discord/callback` under *OAuth2 → Redirects*.
+3. Add `<url>/connect/discord/callback` under *OAuth2 â†’ Redirects*.
 
 Using a separate Discord application for local development keeps production untouched.
 
@@ -157,8 +157,8 @@ npm run typecheck
 The e2e suite covers:
 
 - **Security:** login, CSRF, OAuth connect (including a forged `state`), 401 on unsigned/forged/stale requests.
-- **The main flow:** PING, `/report` → AI → rules → reply → channel post → mirror, the modal flow, cooldown, buttons with permission checks, and `/status`.
-- **Failure handling:** duplicate delivery, mirror retry, AI fallback, database outage → spool → replay, and dedup across a restart.
+- **The main flow:** PING, `/report` â†’ AI â†’ rules â†’ reply â†’ channel post â†’ mirror, the modal flow, cooldown, buttons with permission checks, and `/status`.
+- **Failure handling:** duplicate delivery, mirror retry, AI fallback, database outage â†’ spool â†’ replay, and dedup across a restart.
 - **The dashboard:** every page renders.
 - **Secrets:** the app's logs never contain them.
 
@@ -168,15 +168,15 @@ On Windows, PGlite prints "The system cannot find the path specified." a few tim
 
 | Name | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | ✓ | Postgres connection string (Neon/Supabase). `sslmode=require` → TLS with verification; `sslmode=no-verify` → TLS without verification |
+| `DATABASE_URL` | âœ“ | Postgres connection string (Neon/Supabase). `sslmode=require` â†’ TLS with verification; `sslmode=no-verify` â†’ TLS without verification |
 | `DATABASE_POOL_MAX` | | Default 5 (use 1 with the local PGlite server) |
-| `APP_SECRET` | ✓ | 32+ random chars; derives the at-rest encryption key |
-| `DISCORD_APPLICATION_ID` | ✓ | Portal → General Information |
-| `DISCORD_PUBLIC_KEY` | ✓ | Portal → General Information (used for Ed25519 verification) |
-| `DISCORD_BOT_TOKEN` | ✓ | Portal → Bot → Reset Token |
-| `DISCORD_CLIENT_SECRET` | ✓ | Portal → OAuth2 (for the "connect server" code exchange) |
+| `APP_SECRET` | âœ“ | 32+ random chars; derives the at-rest encryption key |
+| `DISCORD_APPLICATION_ID` | âœ“ | Portal â†’ General Information |
+| `DISCORD_PUBLIC_KEY` | âœ“ | Portal â†’ General Information (used for Ed25519 verification) |
+| `DISCORD_BOT_TOKEN` | âœ“ | Portal â†’ Bot â†’ Reset Token |
+| `DISCORD_CLIENT_SECRET` | âœ“ | Portal â†’ OAuth2 (for the "connect server" code exchange) |
 | `PUBLIC_BASE_URL` | on non-Render hosts | Public https origin. On Render, `RENDER_EXTERNAL_URL` is used automatically |
-| `GROQ_API_KEY` / `GROQ_MODEL` | | Enables AI triage (default model `llama-3.1-8b-instant`) |
+| `GROQ_API_KEY` / `GROQ_MODEL` | | Enables AI triage (default model `openai/gpt-oss-20b`) |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | | Seeds or updates an admin on every boot |
 | `ALLOW_SIGNUP` | | `true` enables `/signup` (default `false`) |
 | `KEEPALIVE` | | Self-ping to keep a free instance awake (default `true`) |
@@ -186,12 +186,12 @@ On Windows, PGlite prints "The system cannot find the path specified." a few tim
 
 The live instance runs on **Render (free web service)** with **Neon (free Postgres)**, auto-deployed from `main`. [docs/SETUP.md](docs/SETUP.md) has the click-by-click guide for every service (Discord portal, Neon, Slack/Discord webhook, Groq, Render, uptime ping). In short:
 
-1. Render → *New Web Service* from this repo.
+1. Render â†’ *New Web Service* from this repo.
 2. Set the build command to `npm ci --include=dev && npm run build` and the start command to `npm start`.
 3. Set the health check path to `/health` and add the env vars above (`NODE_ENV=production`).
 4. After the first deploy, set the Discord *Interactions Endpoint URL* to `https://<app>.onrender.com/interactions`. Discord verifies it with a signed PING plus a deliberately bad signature, and the app handles both.
 5. Add `https://<app>.onrender.com/connect/discord/callback` as an OAuth2 redirect.
-6. Sign in to the dashboard → *Connect a Discord server*.
+6. Sign in to the dashboard â†’ *Connect a Discord server*.
 
 Free Render instances sleep after 15 idle minutes, and Discord doesn't retry an interaction that times out. The app pings its own public URL every 10 minutes, and an external uptime monitor can be added as a backup. The worker only touches the DB when there's work (or every 30 min when idle), so Neon can scale to zero and the free compute quota isn't used up.
 
@@ -200,7 +200,7 @@ Free Render instances sleep after 15 idle minutes, and Discord doesn't retry an 
 ```
 src/
   server.ts, app.ts        boot, graceful shutdown, middleware order (raw body before parsers)
-  interactions/            route (verify) → handler (per type/command) → ingest (dedup+persist) → spool
+  interactions/            route (verify) â†’ handler (per type/command) â†’ ingest (dedup+persist) â†’ spool
   jobs/                    queue (claim/retry/dead-letter), worker, handlers (one per side effect)
   services/                rules engine, AI triage, mirror, reports, guild config cache, events
   discord/                 signature verification, REST client, command + message builders

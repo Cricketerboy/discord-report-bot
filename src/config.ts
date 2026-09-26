@@ -28,7 +28,7 @@ const schema = z.object({
   DISCORD_API_BASE: z.string().url().default('https://discord.com/api/v10'),
 
   GROQ_API_KEY: z.string().optional(),
-  GROQ_MODEL: z.string().default('llama-3.1-8b-instant'),
+  GROQ_MODEL: z.string().default('openai/gpt-oss-20b'),
   GROQ_API_BASE: z.string().url().default('https://api.groq.com/openai/v1'),
 
   // Optional: create/refresh an admin account on boot (handy for a throwaway reviewer login).
