@@ -18,10 +18,10 @@ It uses Discord **HTTP interactions** (no gateway websocket). All work after the
 
 | | |
 |---|---|
-| **Live app** | `<!-- FILL: https://your-app.onrender.com -->` |
-| **Dashboard login** | `<!-- FILL: email -->` / `<!-- FILL: password -->` (throwaway account) |
-| **Test server invite** | `<!-- FILL: https://discord.gg/... -->` |
-| **Mirror channel** | `<!-- FILL: e.g. #mod-alerts in the same test server (Discord webhook) or Slack workspace invite -->` |
+| **Live app** | <https://discord-report-bot-iarh.onrender.com> (free Render instance, kept awake by a self-ping. If it was asleep, the first page load can take about 30 s) |
+| **Dashboard login** | Throwaway admin credentials are in the submission email (kept out of this public repo) |
+| **Test server invite** | <https://discord.gg/yWyk7REDTk> |
+| **Mirror channel** | `#mod-alerts` in the test server (a Discord channel webhook). Reports are carded in `#reports` |
 
 **Happy path (about 2 minutes)**
 
