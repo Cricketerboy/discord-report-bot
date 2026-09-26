@@ -1,43 +1,59 @@
 # AI_NOTES
 
-> **TODO (author):** This is a draft. The sections marked ✍️ must be in your own words, from your own experience. Reviewers read this file closely. Delete this note when done.
+## 1. Tools I used and how we split the work
 
-## Tools and how the work was split
+- **Tool:** Claude Code (model: Claude Opus 5.5), inside VS Code.
+- **What the AI did:** I pasted the full assignment brief and asked it to build the project. It wrote almost all of the code, the unit tests and end-to-end tests, the README and the setup guide. It ran the type checker and the tests itself and fixed problems until everything passed.
+- **What I did:**
+  - Created every account and service: the Discord application and test server, the Neon database, the Groq API key, the Render web service and the GitHub repo.
+  - Filled in the `.env` file and the Render environment variables.
+  - Set the Discord *Interactions Endpoint URL* and the OAuth redirect.
+  - Connected the server from the dashboard and tested every command and button in real Discord.
+  - Whenever something went wrong, I reported the exact error or a screenshot back to the AI and checked the fix on the live app.
+- **Context files:** `CLAUDE.md` holds the project rules for future AI sessions. It was written at the *end* of the first session, so the main build was driven by the pasted brief, not by that file.
 
-- **Claude Code** (model: Claude Opus 5.5) inside VS Code. The brief was pasted in as the starting prompt. [`CLAUDE.md`](CLAUDE.md) holds the project context and invariants used for later AI sessions.
-- The AI produced the first full implementation in one session: architecture, code, unit and e2e tests, README and setup guide. It iterated against `tsc` and the test suites until they passed.
-- ✍️ **Me:** account setup (Discord portal, Neon, Render, Groq, Slack/Discord webhook), deployment, testing on the live URL, reviewing the design, and *TODO: anything you changed or rejected*.
+## 2. Decisions I made
 
-## Key decisions (✍️ confirm, and keep only what you can defend)
+1. **Deploy straight to Render instead of testing through a local tunnel.** Discord can't reach `localhost`, so the AI offered two options: install a tunnel tool (cloudflared) on my laptop, or deploy. I chose to deploy. The project needs a live URL anyway, and a free tunnel URL changes every time, so I would have kept re-entering it in the Discord portal.
+2. **Create the GitHub repo and push the code myself.** I didn't let the AI install extra tools and push for me. I wanted to control exactly what goes public. Before pushing, I had it confirm that `.env` (which holds the bot token and other secrets) was ignored by git and not in the history. After pushing, we checked that `.env` returns 404 on GitHub.
+3. **Keep the admin password out of the public README.** The repo is public, so anyone could read a password written there and change the bot's settings. I share the throwaway login in the submission email instead.
+4. **Accepted the AI's main architecture, because it matches the quality bar:**
+   - Every Discord request is saved to Postgres *before* the bot answers, so nothing is lost and duplicates are ignored (checked by interaction ID).
+   - Slow work (the AI, posting to the channel, the mirror) runs in a background job queue with retries, so the bot always answers within Discord's 3-second limit.
+   - A Discord channel webhook is the mirror (second channel), because it's the simplest free option.
 
-1. **HTTP interactions and a Postgres-backed job queue instead of a gateway bot plus Redis.** The free tier gives one small web service and one Postgres. Putting the queue in Postgres means jobs survive restarts and need no extra service. The same table is the "actions taken" log the dashboard shows, and retries and dead letters come for free.
-2. **Persist before acknowledging, and use a disk spool when the DB is slow.** The interaction row and the jobs it owes are written in one transaction before Discord is answered. If Postgres can't answer within the time budget (for example a Neon cold start or an outage), the same data goes to a local spool and is replayed later. That is what lets "never lose it" and "never do it twice" hold at once: every write is idempotent on the interaction id or the job's dedupe key.
-3. **One job per side effect, with error classification.** Reply, channel post and mirror are separate jobs. A Slack outage retries only the mirror, and never re-runs the LLM or re-posts to Discord. 5xx, 429 and network errors retry with backoff; other 4xx errors go straight to the dead-letter list with a *Retry now* button.
-4. **Deterministic fallback for the LLM.** The reporter is waiting on a deferred reply, so the bot tries the model twice and then uses keyword triage rather than retrying for minutes.
+## 3. The hardest bug: login was blocked on the live site
 
-## Hardest bug / wrong turn
+**What happened:** The first time I opened the dashboard in a real browser and signed in, I got **"Cross-origin request blocked."** All the automated tests were passing at that moment.
 
-✍️ *TODO: write this from your own experience, especially anything you hit while deploying (portal verification, OAuth redirect, cold starts, env vars). Say what the AI got wrong, how you noticed, and how you fixed it.*
+**What the AI got wrong:** It had added two security protections that were each fine on their own but broke login when used together:
+- a check that rejects form posts coming from another website (it compares the `Origin` header), and
+- a default security header (`Referrer-Policy: no-referrer`).
 
-**Found by me while running it for real. The test suite was green for both of these:**
+With that header, Chrome sends `Origin: null` even when the form is on the *same* site, so the first check rejected every real login. The tests didn't catch it because the test code (Node's `fetch`) doesn't send an `Origin` header at all, unlike a browser.
 
-- **"Cross-origin request blocked" on the very first login.** The AI added two protections that each looked right on their own but broke login when combined. One was an Origin-header check on every POST (a CSRF defence). The other was helmet's default `Referrer-Policy: no-referrer`. With `no-referrer`, Chrome sends `Origin: null` even on *same-origin* form posts, so the check rejected every browser login. The e2e suite didn't catch it because Node's `fetch` sends no `Origin` header at all. I noticed it the first time I signed in from a real browser. The fix was `Referrer-Policy: same-origin`, plus a new e2e test that sends a browser-style `Origin` (same-origin → allowed, other site → 403). Writing that test exposed a second bug: `/health/ready` reported ready as soon as the DB answered, *before* migrations and admin seeding finished, so a login right after boot failed. Readiness now waits for the full boot.
-- **The AI's default LLM had been retired.** Everything worked end-to-end on Render, but every report card said "AI unavailable – keyword triage used". The fallback design hid the failure from users, which is intended, but it also hid it from me until I read the card footer. Calling Groq directly returned `404 model_not_found` for `llama-3.1-8b-instant`, a model name the AI knew from its training data. Listing `/models` showed what is actually available now, and I switched the default to `openai/gpt-oss-20b` after testing it with the real triage prompt. Lesson: an AI's knowledge of third-party model names goes stale, so verify against the live API.
+**How it was fixed:**
+- The header was changed to `same-origin`.
+- A new test was added that behaves like a browser: a same-site login must work, and a login from another site must be blocked.
 
-**Other wrong turns during the AI-assisted build, caught in self-review or by the tests:**
+That new test found a second bug. The health check said "ready" before the admin account had been created, so a login right after startup could fail. Now it only reports "ready" when startup has fully finished.
 
-- **The worker polled the database every second.** The first job-worker design ran a `claimNext()` query every second. That works, but on Neon's serverless Postgres it keeps the compute awake around the clock and uses up the free plan's compute hours. It was caught by thinking through how Neon scales to zero, not by any test. The fix was to make the worker event-driven: enqueueing in-process wakes it, a timer is set for the next scheduled retry (`msUntilNextJob`), and there is a 30-minute idle safety poll.
-- **The migration lock could leak behind a connection pooler.** Migrations first used `pg_advisory_lock` / `pg_advisory_unlock` as separate statements. Behind Neon's pooled endpoint (PgBouncer in transaction mode) those two statements can run on *different* backend connections. The unlock then fails and the lock stays held, so every later boot would hang on migration. The fix was `pg_advisory_xact_lock` inside the migration transaction, which is released by COMMIT.
-- **An e2e failure that only appeared on Windows.** The spool/restart tests passed, but the test file still failed with an unhandled `ECONNRESET`. The cause was the test harness, not the app: `pglite-socket` rejects an internal lock promise when a client socket dies (Windows kills child processes hard) and never handles it. It was fixed in the harness only, with a comment explaining why.
+**Second real bug (the AI model):** Everything worked on Render, but every report card said *"AI unavailable – keyword triage used"*. The AI had chosen a Groq model (`llama-3.1-8b-instant`) that Groq has since retired. Its knowledge of model names was out of date. The bot's fallback kept working, so nothing looked broken. I only noticed because of the message on the card. We called Groq directly, got `404 model_not_found`, listed the models that exist today, tested `openai/gpt-oss-20b` with the real prompt, and made it the default.
 
-## What I'd do with more time
+**What I learned:** Passing tests aren't enough. Test in a real browser and with the real services, and don't trust an AI's memory of third-party details such as model names.
 
-- Move in-memory state (cooldowns, SSE fan-out, rejected-request counters) to Postgres (`LISTEN/NOTIFY`) so the app can scale past one instance.
-- Durable spool storage that survives host loss, for example a second free database or object storage.
-- Per-guild rate limiting and abuse controls; an audit log of dashboard config changes, with who changed what.
-- AI: few-shot examples per server, duplicate-report clustering, and letting the rules engine use AI tags.
-- OpenTelemetry traces across interaction → jobs → upstream calls; alerting when dead letters appear.
+## 4. What I would add with more time
 
-## Prompt excerpt (optional)
+- Run more than one server instance safely, by moving the few things kept in memory (cooldowns, live-update events) into the database.
+- Show a clear warning in the dashboard when the AI keeps failing, instead of relying on the footer text.
+- An audit log of who changed which setting in the dashboard.
+- Smarter AI: spot duplicate reports and let rules use the AI's tags.
+- Alerts (for example to Slack) when an action fails permanently.
 
-> *(the whole assignment brief pasted in, followed by)* "i have this assignment so build this, i have open abstrabity folder, make this assignment, and bata dena run kaise karna hai, make sure har step cover ho kuch break na ho"
+## 5. Prompt excerpt
+
+My first message to Claude Code was the full assignment brief, followed by:
+
+> "i have this assignment so build this, i have open abstrabity folder, make this assignment, and bata dena run kaise karna hai, make sure har step cover ho kuch break na ho"
+
+(Translation: build this assignment in the open folder, tell me how to run it, cover every step and make sure nothing breaks.)
